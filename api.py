@@ -96,7 +96,7 @@ async def return_forecast(city: str):
         lambda x: outlier_mapping(x["outlier"], x["ytrue"]), axis=1
     )
     # convert datetime object into string
-    df["ds"] = df["ds"].dt.strftime(r"%Y-%m-%d")
+    data["ds"] = data["ds"].dt.strftime(r"%Y-%m-%d")
     pre_json_response = data.to_dict(orient="records")
     json_ = json.dumps(pre_json_response)
     return json_
