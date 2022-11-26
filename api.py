@@ -97,6 +97,8 @@ async def return_forecast(city: str):
     )
     # convert datetime object into string
     data["ds"] = data["ds"].dt.strftime(r"%Y-%m-%d")
+    filter_adjusted_outlier = (data['ytrue']<=0) & (data['outlier']=="outlier")
+    data.loc[filter_adjusted_outlier,'outlier'] = 'inlier'
     pre_json_response = data.to_dict(orient="records")
     json_ = json.dumps(pre_json_response)
     return json_
@@ -155,7 +157,9 @@ async def return_forecast(city: str, price_date: str, delta_price: float):
 
     text_outlier_result = (
         "outlier" if outlier_prediction == -1 and delta_price > 0 else "inlier"
+        
     )
+    
     # create dataframe contain prediction
     response_df = pd.DataFrame()
     response_df["date"] = [price_date]
