@@ -41,8 +41,8 @@ Cabe Merah Price Anomaly Detector for 10 City :
 #
 """
 
-BASE_PROPHET_MODEL_PATH = '/home/fakhri/ML_Pacmann_5/api/prophet_model'
-BASE_ISOLATION_FOREST_MODEL_PATH = '/home/fakhri/ML_Pacmann_5/api/isolation_forest_model'
+BASE_PROPHET_MODEL_PATH = 'prophet_model'
+BASE_ISOLATION_FOREST_MODEL_PATH = 'isolation_forest_model'
 
 app = FastAPI(title='Comodity Price Anomaly Detector',description=description)
 
