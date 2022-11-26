@@ -57,6 +57,13 @@ app = FastAPI(
 )
 
 
+def outlier_mapping(outlier_data, y_true):
+    if outlier_data == -1 and y_true >= 0:
+        return "outlier"
+    else:
+        return "inlier"
+
+
 @app.get("/")
 async def root():
     return {
@@ -84,6 +91,11 @@ async def return_forecast(city: str):
     # load dictionary contain data for each city
     data = joblib.load(PAST_DATA).get(city)["resid"]
     data = data[["ds", "ytrue", "outlier"]]
+
+    data["outlier"] = data.apply(
+        lambda x: outlier_mapping(x["outlier"], x["ytrue"]), axis=1
+    )
+    data["outlier"]
     pre_json_response = data.to_dict(orient="records")
     json_ = json.dumps(pre_json_response)
     return json_
