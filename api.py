@@ -1,25 +1,26 @@
-#importing utilities we are going to use
-from fastapi import FastAPI
-
-from enum import Enum
-#pydantic to create request body
-from pydantic import BaseModel
-# typing.Optional to create requets body that is not mandatory with default value
-from typing import Optional 
-# we are going to use datetime manipulation package to create timestamp
-from datetime import date
-from dateutil import relativedelta
-#loading trained forecast model
-from prophet.serialize import  model_from_json
-
+# importing utilities we are going to use
+from fastapi import FastAPI, HTTPException
+from prophet.serialize import model_from_json
 import os
-#import uvicorn for server 
 import uvicorn
-#for data manipulation
 import pandas as pd
 import joblib
-import math 
 import json
+
+# REFERENCES
+CITIES = [
+    "balikpapan",
+    "bandung",
+    "batam",
+    "jakarta",
+    "makassar",
+    "medan",
+    "palembang",
+    "pekanbaru",
+    "surabaya",
+    "yogyakarta",
+]
+CUTOFF_DATE = "2022-11-18"
 
 description = """
 Cabe Merah Price Anomaly Detector for 10 City : 
@@ -35,123 +36,125 @@ Cabe Merah Price Anomaly Detector for 10 City :
 10. yogyakarta
 
 ## Endpoint 
-1. /get_past_outlier_data -> Get All Historical Data Not Including NA Values 
-2. /nowcasting_price -> Get Anomaly Trigger only at exact date. 
+1. /nowcasting_price -> Get Anomaly Trigger only at exact date. 
 
-
-#
 """
+tags_metadata = [
+    {
+        "name": "nowcasting_price",
+        "description": "Predicting whether the price change is outlier or not ",
+    }
+]
 
-BASE_PROPHET_MODEL_PATH = 'prophet_model'
-BASE_ISOLATION_FOREST_MODEL_PATH = 'isolation_forest_model'
+BASE_PROPHET_MODEL_PATH = "prophet_model"
+BASE_ISOLATION_FOREST_MODEL_PATH = "isolation_forest_model"
+PAST_DATA = "past_data/cities_dict.joblib"
 
-app = FastAPI(title='Comodity Price Anomaly Detector',description=description)
+app = FastAPI(
+    title="Comodity Price Anomaly Detector",
+    description=description,
+    openapi_tags=tags_metadata,
+)
 
 
 @app.get("/")
 async def root():
-    return {"message": "Head to endpoint /nowcasting_price to fetch forecast data or to /docs to see documentation"}
+    return {
+        "message": "Head to endpoint /nowcasting_price to fetch forecast data or to /docs to see documentation"
+    }
 
 
-# class City(str,Enum) : 
-#     balikpapan = 'balikpapan'
-#     bandung = 'bandung'
-#     batam = 'batam'
-#     jakarta = 'jakarta'
-#     makassar = 'makassar'
-#     medan = 'medan'
-#     palembang = 'palembang'
-#     pekanbaru = 'pekanbaru'
-#     surabaya = 'surabaya'
-#     yogyakarta = 'yogyakarta'
-
-#creating request body for endpoint /timeseris_forecasting
-#we use pydantic BaseModel
-class api_request(BaseModel) : 
-    #month_limit has following format YYYY-MM-01 , the forecast is monthly basis  
-    city : str 
-    
-    price_date : str
-    # show_all_data is optional and default falue is True
-    delta_price : float
-    #window_size is related with model rolling average number, i picked 12
-    # since forecast is monthly basis with 12 months in a year
-class past_data(BaseModel) : 
-    #month_limit has following format YYYY-MM-01 , the forecast is monthly basis  
-    city : str 
-    
-    # show_all_data is optional and default falue is True
-    date_range : str 
-    
-def compute_resid(y_true,y_hat,ds) : 
-  #create empty dataframe to contain squared error of requested city 
-  error_container = pd.DataFrame()
-  error_container['ds'] = ds
-  error_container['ytrue'] = y_true
-  error_container['squared_error'] = (y_true-y_hat) ** 2 
-  return error_container
-    
-
-@app.post("/get_past_outlier_data")
-async def get_past_outlier(req : past_data) : 
-    city = req.city 
-    
+def compute_resid(y_true, y_hat, ds):
+    # create empty dataframe to contain squared error of requested city
+    error_container = pd.DataFrame()
+    error_container["ds"] = ds
+    error_container["ytrue"] = y_true
+    error_container["squared_error"] = (y_true - y_hat) ** 2
+    return error_container
 
 
+@app.get("/past_outlier_data/{city}")
+async def return_forecast(city: str):
 
-@app.get("/nowcasting_price/{city}/{price_date}/{delta_price}") 
-async def return_forecast(city : str,price_date:str,delta_price:float) : 
-    #load city prophet model 
+    if city not in CITIES:
+        raise HTTPException(
+            status_code=404, detail=f"{city} not in choice. available choices {CITIES}"
+        )
+    # past_data
+    # load dictionary contain data for each city
+    data = joblib.load(PAST_DATA).get(city)["resid"]
+    data = data[["ds", "ytrue", "outlier"]]
+    pre_json_response = data.to_dict(orient="records")
+    json_ = json.dumps(pre_json_response)
+    return json_
 
-    with open(os.path.join(BASE_PROPHET_MODEL_PATH,f'serialized_model_{city}.json'), 'r') as model_final:
-        model = model_from_json(model_final.read())  # Load Model 
-    #generate prediction 
-    CUTOFF_DATE = '2022-11-18'
-    #init empty df 
+
+@app.get("/nowcasting_price/{city}/{price_date}/{delta_price}")
+async def return_forecast(city: str, price_date: str, delta_price: float):
+
+    # validation
+    if city not in CITIES:
+        raise HTTPException(
+            status_code=404, detail=f"{city} not in choice. available choices {CITIES}"
+        )
+
+    with open(
+        os.path.join(BASE_PROPHET_MODEL_PATH, f"serialized_model_{city}.json"), "r"
+    ) as model_final:
+        model = model_from_json(model_final.read())  # Load Model
+    # generate prediction
+
+    # init empty df
     df = pd.DataFrame()
-    df['cutoff_date'] = [CUTOFF_DATE]
-    df['cutoff_date']  = pd.to_datetime(df['cutoff_date'] )
+    df["cutoff_date"] = [CUTOFF_DATE]
+    df["cutoff_date"] = pd.to_datetime(df["cutoff_date"])
     REQ_DATE = price_date
     req_date = pd.DataFrame()
-    req_date['request_date'] = [REQ_DATE]
-    req_date['request_date']  = pd.to_datetime(req_date['request_date'] )
-    
-    distance_from_cutoff =  (req_date['request_date'] - df['cutoff_date']).dt.days.values.squeeze()
+    req_date["request_date"] = [REQ_DATE]
+    req_date["request_date"] = pd.to_datetime(req_date["request_date"])
+
+    distance_from_cutoff = (
+        req_date["request_date"] - df["cutoff_date"]
+    ).dt.days.values.squeeze()
+    # validation for date
+    if distance_from_cutoff <= 0:
+        raise HTTPException(
+            status_code=404, detail="Minimal Start Date from 2022-11-19"
+        )
+    # generate prediction
     forecast_df = model.make_future_dataframe(periods=distance_from_cutoff)
     prediction = model.predict(forecast_df)
     latest_date = prediction.iloc[-1]
-    #calculate squarred error 
-    residual = compute_resid(y_true=delta_price,y_hat=latest_date['yhat'],ds=req_date['request_date'])
-    
-    #load isolation forest model 
-    ISOLATION_FOREST_MODEL = os.path.join(BASE_ISOLATION_FOREST_MODEL_PATH,f'{city}_isoforest.joblib')
+    # calculate squarred error
+    residual = compute_resid(
+        y_true=delta_price, y_hat=latest_date["yhat"], ds=req_date["request_date"]
+    )
+
+    # load isolation forest model
+    ISOLATION_FOREST_MODEL = os.path.join(
+        BASE_ISOLATION_FOREST_MODEL_PATH, f"{city}_isoforest.joblib"
+    )
     isoforest_model = joblib.load(ISOLATION_FOREST_MODEL)
-    outlier_prediction = isoforest_model.predict(residual['squared_error'].values.reshape(-1, 1))
-    
-    text_outlier_result = 'outlier' if outlier_prediction==-1 else 'inlier'
-    
+    # prediction
+    outlier_prediction = isoforest_model.predict(
+        residual["squared_error"].values.reshape(-1, 1)
+    )
+
+    text_outlier_result = (
+        "outlier" if outlier_prediction == -1 and delta_price > 0 else "inlier"
+    )
+    # create dataframe contain prediction
     response_df = pd.DataFrame()
-    response_df['date'] = [price_date] 
-    response_df['delta_price']  = [delta_price]
-    response_df['city'] = [city] 
-    response_df['category'] = [text_outlier_result]
-    #
-    
-    print(response_df)
-    
-    
-   
-    
-    
-    
-    
-    pre_json_response = response_df.to_dict(orient='records')
+    response_df["date"] = [price_date]
+    response_df["delta_price"] = [delta_price]
+    response_df["city"] = [city]
+    response_df["category"] = [text_outlier_result]
+    # convert to json response
+    pre_json_response = response_df.to_dict(orient="records")
     json_ = json.dumps(pre_json_response)
     return json_
-    # json_compatible_item_data = jsonable_encoder(output_before_json)
-    # return JSONResponse(content=json_compatible_item_data)
-    #start creating figure 
-    
+
+
 # running the server
-if __name__ == '__main__' : 
-    uvicorn.run(app=app,host="127.0.0.1", port=5000, log_level="info")
+if __name__ == "__main__":
+    uvicorn.run(app=app, host="127.0.0.1", port=5000, log_level="info")
