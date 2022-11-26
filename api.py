@@ -163,7 +163,7 @@ async def return_forecast(city: str, price_date: str, delta_price: float):
     
     # create dataframe contain prediction
     response_df = pd.DataFrame()
-    response_df["date"] = [price_date]
+    response_df["ds"] = [price_date]
     response_df["ytrue"] = [delta_price]
     response_df["city"] = [city]
     response_df["outlier"] = [text_outlier_result]
