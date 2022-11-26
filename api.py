@@ -120,7 +120,7 @@ async def return_forecast(city : str,price_date:str,delta_price:float) :
     prediction = model.predict(forecast_df)
     latest_date = prediction.iloc[-1]
     #calculate squarred error 
-    residual = compute_resid(y_true=req.delta_price,y_hat=latest_date['yhat'],ds=req_date['request_date'])
+    residual = compute_resid(y_true=delta_price,y_hat=latest_date['yhat'],ds=req_date['request_date'])
     
     #load isolation forest model 
     ISOLATION_FOREST_MODEL = os.path.join(BASE_ISOLATION_FOREST_MODEL_PATH,f'{city}_isoforest.joblib')
